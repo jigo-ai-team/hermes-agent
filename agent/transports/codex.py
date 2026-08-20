@@ -115,10 +115,16 @@ def _default_prompt_cache_retention_for_request(
     model: str,
     base_url: Any,
 ) -> Optional[str]:
-    """Return ``24h`` for supported models on Amazon Bedrock Mantle."""
+    """Return ``24h`` for supported hosts/models (Bedrock Mantle, Meta)."""
     from utils import base_url_hostname
 
-    hostname_parts = base_url_hostname(str(base_url or "")).split(".")
+    hostname = base_url_hostname(str(base_url or "")).lower()
+    # Meta Model API: prompt caching is opt-in via prompt_cache_retention.
+    # Measured 0% hits on /chat/completions vs 93-99% on /responses with 24h.
+    if hostname == "api.meta.ai":
+        return "24h"
+
+    hostname_parts = hostname.split(".")
     is_bedrock_mantle = (
         len(hostname_parts) == 4
         and hostname_parts[0] == "bedrock-mantle"
@@ -426,10 +432,14 @@ class ResponsesApiTransport(ProviderTransport):
             elif reasoning_config.get("effort"):
                 reasoning_effort = reasoning_config["effort"]
 
-        _effort_clamp = {"minimal": "low"}
-        if "gpt-5.6" in (model or "").lower():
-            # Ultra is the Codex product tier; the Responses API wire value is max.
-            _effort_clamp["ultra"] = "max"
+        # "ultra" is Hermes-internal ladder vocabulary (the Codex product
+        # tier); no Responses-API backend accepts it verbatim, so the
+        # baseline maps it to its wire cap "max" for EVERY model — the old
+        # gpt-5.6-only guard leaked "ultra" untranslated to sibling models
+        # and the request 400'd (same class as #89503 on the
+        # chat-completions transport). Backend-specific branches below
+        # override the baseline where the ceiling is narrower.
+        _effort_clamp = {"minimal": "low", "ultra": "max"}
         if params.get("is_xai_responses", False):
             from agent.model_metadata import is_grok_46_family
 
