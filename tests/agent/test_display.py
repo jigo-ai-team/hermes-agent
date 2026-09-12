@@ -314,3 +314,44 @@ class TestBuildStatusPhrase:
             assert build_status_phrase("terminal", {"command": "ls"}) is None
         finally:
             set_friendly_tool_labels(True)
+
+
+class TestHumanizeToolName:
+    """Uncurated tools (MCP, plugins) read as a sentence instead of a wire name."""
+
+    @pytest.fixture(autouse=True)
+    def _enable_friendly(self):
+        from agent.display import set_friendly_tool_labels
+        set_friendly_tool_labels(True)
+        yield
+        set_friendly_tool_labels(True)
+
+    def test_strips_the_mcp_server_segment(self):
+        from agent.display import humanize_tool_name
+        assert humanize_tool_name("mcp__jigo_masterhub__get_daily_briefing") == "Getting daily briefing"
+
+    def test_bare_tool_name_without_the_transport_prefix(self):
+        from agent.display import humanize_tool_name
+        assert humanize_tool_name("search_invoices") == "Searching invoices"
+
+    def test_unknown_leading_token_keeps_its_own_wording(self):
+        from agent.display import humanize_tool_name
+        assert humanize_tool_name("mcp__jigo_masterhub__confirm_action") == "Confirming action"
+        assert humanize_tool_name("mcp__x__frobnicate_widget") == "Frobnicate widget"
+
+    def test_toggle_off_returns_the_wire_name(self):
+        from agent.display import humanize_tool_name, set_friendly_tool_labels
+        set_friendly_tool_labels(False)
+        try:
+            assert humanize_tool_name("mcp__jigo_masterhub__get_deal") == "mcp__jigo_masterhub__get_deal"
+        finally:
+            set_friendly_tool_labels(True)
+
+    def test_status_phrase_no_longer_speaks_the_wire_name(self):
+        from agent.display import build_status_phrase
+        assert build_status_phrase("mcp__jigo_masterhub__list_deals", None) == "is listing deals…"
+
+    def test_curated_built_ins_are_untouched(self):
+        from agent.display import build_status_phrase, build_tool_label
+        assert build_status_phrase("terminal", None) == "is running…"
+        assert build_tool_label("web_search", {"query": "weather in NYC"}) == "Searching the web for weather in NYC"

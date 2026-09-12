@@ -508,6 +508,44 @@ def get_tool_verb(tool_name: str) -> str | None:
     return _TOOL_VERBS.get(tool_name) if _friendly_tool_labels else None
 
 
+# Leading snake_case tokens that read as bare verbs in a tool name, with the gerund a
+# progress line wants. Anything else keeps its own wording, so an unknown first token
+# is never guessed at.
+_NAME_VERB_GERUNDS: dict[str, str] = {
+    "get": "Getting", "list": "Listing", "search": "Searching", "find": "Finding",
+    "read": "Reading", "fetch": "Fetching", "create": "Creating", "update": "Updating",
+    "delete": "Deleting", "add": "Adding", "remove": "Removing", "send": "Sending",
+    "append": "Appending", "select": "Selecting", "propose": "Proposing",
+    "confirm": "Confirming", "link": "Linking", "unlink": "Unlinking",
+    "run": "Running", "check": "Checking", "set": "Setting", "write": "Writing",
+}
+
+
+def humanize_tool_name(tool_name: str) -> str:
+    """Readable form of a tool's wire name, for the places that would otherwise print it raw.
+
+    MCP tools arrive as ``mcp__<server>__<tool>`` (or bare ``<tool>``) and have no curated
+    verb, so a Slack progress bubble used to read ``mcp__jigo_masterhub__get_daily_briefing``.
+    Drops the transport prefix and renders the rest as a sentence — ``Getting daily briefing``
+    — turning the leading token into a gerund only when it is a known bare verb.
+    Returns *tool_name* unchanged when friendly labels are off, so the toggle still wins.
+    """
+    if not tool_name or not _friendly_tool_labels:
+        return tool_name
+    name = tool_name
+    if name.startswith("mcp__"):
+        name = name[len("mcp__"):]
+        _, sep, rest = name.partition("__")  # strip the server segment when there is one
+        name = rest if sep else name
+    words = [w for w in name.replace("-", "_").split("_") if w]
+    if not words:
+        return tool_name
+    head = _NAME_VERB_GERUNDS.get(words[0].lower())
+    if head is None:
+        head = words[0][:1].upper() + words[0][1:]
+    return " ".join([head, *(w.lower() for w in words[1:])])
+
+
 def tool_verb_connector(tool_name: str) -> str:
     """Return the connector between a verb and its preview (" for " or " ")."""
     return " for " if tool_name in _TOOL_VERBS_FOR_CONNECTOR else " "
@@ -528,7 +566,10 @@ def build_status_phrase(tool_name: str, args: dict | None, max_len: int = 49) ->
     if not tool_name or tool_name == "_thinking" or not _friendly_tool_labels:
         return None
     verb = _TOOL_VERBS.get(tool_name)
-    phrase = f"is {verb[0].lower()}{verb[1:]}" if verb else f"is using {tool_name}"
+    # An uncurated tool still gets a sentence rather than its wire name; the argument
+    # preview stays curated-only, because only a known verb reads well in front of one.
+    spoken = verb or humanize_tool_name(tool_name)
+    phrase = f"is {spoken[0].lower()}{spoken[1:]}"
     with_preview = args and verb and tool_name not in _TOOL_VERBS_NO_PREVIEW
     preview = build_tool_preview(tool_name, args, max_len=None) if with_preview else None
     if preview:  # previews can contain newlines (terminal commands); keep the first line

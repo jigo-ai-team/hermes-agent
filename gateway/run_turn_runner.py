@@ -257,8 +257,9 @@ class TurnRunner:
             return None
         if code is not None:
             return code
+        from agent.display import humanize_tool_name
         if not preview:
-            return f"{emoji} {tool_name}..."
+            return f"{emoji} {humanize_tool_name(tool_name)}..."
         from agent.display import get_tool_verb, prepare_tool_preview, tool_verb_connector, verb_drops_preview
         prepared = prepare_tool_preview(tool_name, args, fallback=preview, max_len=self._preview_cap())
         preview = adapter.format_tool_preview(prepared) if adapter is not None else prepared.text
@@ -266,7 +267,7 @@ class TurnRunner:
         # by prefixing the verb onto the computed preview, so the command/url/query is kept.
         verb = get_tool_verb(tool_name)
         if not verb:
-            return f"{emoji} {tool_name}: \"{preview}\""
+            return f"{emoji} {humanize_tool_name(tool_name)}: \"{preview}\""
         return f"{emoji} {verb}" if verb_drops_preview(tool_name) else f"{emoji} {verb}{tool_verb_connector(tool_name)}{preview}"
 
     def _progress_emit(self, msg: str) -> None:
