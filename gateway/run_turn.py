@@ -1419,8 +1419,12 @@ class GatewayTurnMixin:
                 logger.debug("Profile-build onboarding directive failed, using plain intro: %s", _pb_err)
                 turn_sidecar_notes.append(_intro_note)
 
-        # One-time prompt if no home channel is set (webhooks deliver to configured targets instead).
+        # One-time prompt if no home channel is set. Request/response adapters cannot receive
+        # cron or cross-platform delivery later, so advertising /sethome on them is misleading.
         if not source.platform or source.platform in (Platform.LOCAL, Platform.WEBHOOK):
+            return
+        adapter = (getattr(self, "adapters", None) or {}).get(source.platform)
+        if adapter is not None and not getattr(adapter, "supports_async_delivery", True):
             return
         platform_name = source.platform.value
         env_key = _home_target_env_var(platform_name)
