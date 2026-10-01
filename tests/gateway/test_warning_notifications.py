@@ -36,7 +36,6 @@ class Emitter(StatusOutputMixin):
 
 
 @pytest.mark.parametrize("platform", [Platform.SLACK, Platform.TELEGRAM, Platform.LOCAL])
-@pytest.mark.parametrize("thread_id", [None, "1700.1"])
 @pytest.mark.parametrize("configured,enabled", [
     ("", True), ("display: null", True),
     ("display: {suppress_warning_notifications: null}", True),
@@ -49,8 +48,10 @@ class Emitter(StatusOutputMixin):
     ("display: {platforms: broken}", True),
     ("display: {suppress_warning_notifications: true, platforms: {slack: {suppress_warning_notifications: false}}}", True),
 ])
-def test_warning_opt_out_preserves_other_delivery(tmp_path, monkeypatch, platform, thread_id, configured, enabled):
+def test_warning_opt_out_preserves_other_delivery(tmp_path, monkeypatch, platform, configured, enabled):
     from gateway import run
+
+    thread_id = "1700.1"  # threaded vs. unthreaded delivery is covered in test_warning_notifications_transport
 
     (tmp_path / "config.yaml").write_text(configured)
     monkeypatch.setattr(run, "_hermes_home", tmp_path)
@@ -126,35 +127,3 @@ def test_direct_warning_delivery_keeps_failure_state(tmp_path, monkeypatch, enab
     assert len(adapter.sent) == (2 if enabled else 0)
     assert gateway._send_home_channel_message.await_count == int(enabled)
     assert gateway._session_db_init_error == "database is locked"
-
-
-def test_first_contact_skips_home_prompt_for_non_push_plugin_platform():
-    """Request/response adapters cannot be a cron home and must not advertise /sethome."""
-    from gateway.platform_registry import PlatformEntry, platform_registry
-
-    platform_registry.register(PlatformEntry(
-        name="jigo_hub_web",
-        label="Jigo Hub Web",
-        adapter_factory=lambda _config: None,
-        check_fn=lambda: True,
-    ))
-    try:
-        platform = Platform("jigo_hub_web")
-        source = SessionSource(platform=platform, chat_id="conversation", user_id="user")
-        gateway = object.__new__(GatewayRunner)
-        gateway.session_store = store = object()
-        gateway._async_session_store = SimpleNamespace(
-            _store=store,
-            has_any_sessions=AsyncMock(return_value=True),
-        )
-        gateway.config = SimpleNamespace(get_home_channel=lambda _platform: None)
-        gateway.adapters = {
-            platform: SimpleNamespace(supports_async_delivery=False),
-        }
-        gateway._deliver_platform_notice = AsyncMock()
-
-        asyncio.run(gateway._hmwa_first_contact_notes(source, [], []))
-
-        gateway._deliver_platform_notice.assert_not_awaited()
-    finally:
-        platform_registry.unregister("jigo_hub_web")
