@@ -7,6 +7,8 @@ import time
 from dataclasses import dataclass
 from contextlib import suppress
 
+from tools import delegate_tool_config
+
 _DONE = ("completed", "success")
 _REASON_STATUS = {"lost": "marked lost because the process backend disappeared"}
 
@@ -100,10 +102,9 @@ def _model_not_found_patterns() -> list[str]:
 
 
 def _delegation_config() -> dict:
-    """Active delegation config; ``{}`` on any error. Lazy: delegate_tool is heavy."""
+    """Active delegation config; ``{}`` on any error."""
     try:
-        from tools.delegate_tool import _load_config as _cfg
-        return _cfg() or {}
+        return delegate_tool_config._load_config() or {}
     except Exception:
         return {}
 
@@ -506,6 +507,9 @@ class TimelineNotification(str):
         instance.display_kind = display_kind
         instance.notification_category = notification_category
         return instance
+
+    def __getnewargs_ex__(self):  # copy/pickle rebuild via __new__, which needs the display fields
+        return (str(self), self.display_text, self.display_kind, self.notification_category), {}
 
     @classmethod
     def for_delegation(cls, text: str, event: dict) -> "TimelineNotification":
